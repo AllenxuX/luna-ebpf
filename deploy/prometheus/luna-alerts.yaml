@@ -1,0 +1,67 @@
+groups:
+  - name: luna-ebpf
+    interval: 30s
+    rules:
+      - alert: LunaScrapeDown
+        expr: up{job="luna-ebpf"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "采集端点不可达"
+      - alert: LunaMetricsMissing
+        expr: (up{job="luna-ebpf"} == 1) unless on (job, instance) luna_exporter_up{job="luna-ebpf"}
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "端点可达但缺少luna指标"
+      - alert: LunaAgentUnhealthy
+        expr: luna_exporter_up{job="luna-ebpf"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "采集器异常"
+      - alert: LunaDockerDisconnected
+        expr: luna_exporter_docker_connected{job="luna-ebpf"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Docker连接异常"
+      - alert: LunaSampleStale
+        expr: (time() - luna_exporter_last_success_timestamp_seconds{job="luna-ebpf"} > 60) and on (job, instance) (up{job="luna-ebpf"} == 1)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "采样超过60秒未更新"
+      - alert: LunaMapFailures
+        expr: sum by (job, instance) (increase({__name__=~"luna_exporter_(map_insert_failures|lookup_failures)_total",job="luna-ebpf"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Map错误可能导致漏计"
+      - alert: LunaPollFailures
+        expr: increase(luna_exporter_poll_errors_total{job="luna-ebpf"}[5m]) > 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "采样/Map操作错误持续出现"
+      - alert: LunaHighTX
+        expr: sum by (job, instance, container_id, container_name) (rate(luna_container_tx_bytes_total{job="luna-ebpf"}[5m])) * 8 / 1000000 > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器TX超过100Mbps"
+      - alert: LunaHighRX
+        expr: sum by (job, instance, container_id, container_name) (rate(luna_container_rx_bytes_total{job="luna-ebpf"}[5m])) * 8 / 1000000 > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器RX超过100Mbps"

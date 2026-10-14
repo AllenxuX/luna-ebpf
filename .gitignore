@@ -1,0 +1,16 @@
+/bin/
+/dist/
+/.tools/
+/test-results/
+*.log
+__pycache__/
+
+/.private/
+/AGENTS.md
+/CODEX_*
+*.tar
+*.tar.gz
+.env
+.env.*
+*.pem
+*.key

@@ -1,0 +1,27 @@
+[Unit]
+Description=luna-ebpf Docker host-network socket traffic exporter
+Documentation=https://github.com/AllenxuX/luna-ebpf
+Wants=docker.service
+After=docker.service network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/luna-ebpf --config /etc/luna-ebpf/config.yaml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+# Compatibility baseline: older kernels may require SYS_ADMIN/SYS_RESOURCE.
+# Narrow this set only after --check on the actual deployment kernel.
+# SYS_PTRACE permits the ptrace-gated read of /proc/1/ns/cgroup for host-view validation.
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+LimitMEMLOCK=infinity
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

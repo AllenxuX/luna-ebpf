@@ -1,0 +1,27 @@
+services:
+  luna-ebpf:
+    build:
+      context: .
+    image: luna-ebpf:0.1.2
+    pull_policy: build
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    cgroup: host
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /proc:/host/proc:ro
+    command:
+      - --config
+      - /etc/luna-ebpf/config.yaml
+      - --proc-root
+      - /host/proc
+      - --listen-address
+      - 127.0.0.1:9808
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

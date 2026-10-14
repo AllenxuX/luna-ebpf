@@ -1,0 +1,10 @@
+listen_address: "127.0.0.1:9808"
+docker_socket: "/var/run/docker.sock"
+cgroup_root: "/sys/fs/cgroup"
+proc_root: "/proc"
+metrics_poll_interval: "5s"
+docker_reconcile_interval: "30s"
+container_stale_grace_period: "60s"
+log_level: "info"
+map_max_entries: 8192
+cgroup_subtree_max_nodes: 1024

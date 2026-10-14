@@ -1,0 +1,16 @@
+name: test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update && sudo apt-get install -y clang llvm libbpf-dev
+      - run: make generate test race lint
+      - run: make build ARCH=amd64 && make build ARCH=arm64
+      # Privileged Docker/cgroup integration runs on a dedicated Linux host.

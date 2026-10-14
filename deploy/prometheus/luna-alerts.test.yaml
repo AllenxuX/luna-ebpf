@@ -1,0 +1,184 @@
+{
+  "rule_files": [
+    "luna-alerts.yaml"
+  ],
+  "evaluation_interval": "1m",
+  "tests": [
+    {
+      "name": "healthy-no-alerts",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "1+0x20"
+        },
+        {
+          "series": "luna_exporter_up{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "1+0x20"
+        },
+        {
+          "series": "luna_exporter_docker_connected{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "1+0x20"
+        },
+        {
+          "series": "luna_exporter_last_success_timestamp_seconds{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "0+60x20"
+        },
+        {
+          "series": "luna_exporter_map_insert_failures_total{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "0+0x20"
+        },
+        {
+          "series": "luna_exporter_lookup_failures_total{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "0+0x20"
+        },
+        {
+          "series": "luna_exporter_poll_errors_total{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "0+0x20"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "LunaScrapeDown",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaMetricsMissing",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaAgentUnhealthy",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaDockerDisconnected",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaSampleStale",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaMapFailures",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaPollFailures",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaHighTX",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaHighRX",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "endpoint-down",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "0+0x20"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "LunaScrapeDown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "luna-ebpf",
+                "instance": "node1:9808",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "采集端点不可达"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "map-failure",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "luna_exporter_map_insert_failures_total{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "0+1x20"
+        },
+        {
+          "series": "luna_exporter_lookup_failures_total{job=\"luna-ebpf\",instance=\"node1:9808\"}",
+          "values": "0+0x20"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "3m",
+          "alertname": "LunaMapFailures",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "luna-ebpf",
+                "instance": "node1:9808",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Map错误可能导致漏计"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "traffic-threshold-and-duration",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "luna_container_tx_bytes_total{job=\"luna-ebpf\",instance=\"node1:9808\",container_id=\"id1\",container_name=\"web\"}",
+          "values": "0+900000000x20"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "2m",
+          "alertname": "LunaHighTX",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "LunaHighTX",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "luna-ebpf",
+                "instance": "node1:9808",
+                "severity": "warning",
+                "container_id": "id1",
+                "container_name": "web"
+              },
+              "exp_annotations": {
+                "summary": "容器TX超过100Mbps"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
