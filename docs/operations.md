@@ -20,7 +20,7 @@ kprobes. It derives layouts from BTF without guessed offsets. Old kernels
 without usable BTF are unsupported by this backend. If running in Docker,
 ensure the host BTF is readable inside the exporter as well. Missing BTF,
 probe symbols or permissions must be resolved before using this backend;
-kernel version alone is insufficient. Privileged v1 runtime tests are NOT RUN.
+kernel version alone is insufficient. Privileged v1 runtime tests passed on the documented test host.
 
 Linux must enable the selected backend's BPF/cgroup/socket features, notably
 BPF syscall and socket cgroup association; cgroup-skb also requires cgroup BPF

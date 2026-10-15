@@ -61,7 +61,7 @@ Docker list/inspect/events → host PID cgroup path → `name_to_handle_at()` �
 
 All BPF paths preserve packet verdicts. On cgroup v2 / cgroup-skb, host, default/custom bridge and shared netns TCP/UDP attribution have been validated. `none` is discovered with zero IP traffic. Macvlan/ipvlan tests cover same-host communication using dummy parents, not external networks or ipvlan L3. Other network drivers are discovered but their paths have not been verified.
 
-The v1 socket-trace MVP covers IPv4/IPv6 TCP/UDP, without guaranteed RAW/ICMP coverage. Privileged v1 runtime validation is NOT RUN. TX observes `__ip_local_out` / `__ip6_local_out`; RX observes TCP/UDP receive probes. These differ from v2 hooks, so packet-exact equality across backends is not expected.
+The v1 socket-trace MVP covers IPv4/IPv6 TCP/UDP, without guaranteed RAW/ICMP coverage. Privileged v1 and v2 runtime validation passed on the documented test host. TX observes `ip_output` / `ip6_output`; RX observes TCP/UDP receive probes. These differ from v2 hooks, so packet-exact equality across backends is not expected.
 
 Bytes are skb length and packets are hook invocations, not application payload or physical wire packets. AF_UNIX, pure forwarding and all RAW/tunnel/socket-transfer paths are outside guaranteed coverage. Discovery windows can miss traffic; agent restarts reset counters.
 

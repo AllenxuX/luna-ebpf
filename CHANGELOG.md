@@ -6,7 +6,7 @@
 - Resolve v1 identity from a mounted controller hierarchy, preferring memory, using native kernel handles and an explicit cgroup allowlist.
 - Read socket layouts from kernel BTF, observe socket creation/clone, and seed existing sockets from cgroup process file descriptors. Require readable BTF and required kprobes; no guessed offsets or packet verdict changes.
 - Retain metric names and labels. Hook observations differ across backends. The v1 MVP covers IPv4/IPv6 TCP/UDP, without guaranteed RAW/ICMP coverage.
-- Build local source images as `luna-ebpf:0.1.3`. Privileged v1 Linux validation: NOT RUN; validation remains pending.
+- Build local source images as `luna-ebpf:0.1.3`. Privileged v1 and v2 Linux traffic, lifecycle and deployment validation passed; see docs/validation.md.
 
 ## 0.1.2 — Initial public release
 

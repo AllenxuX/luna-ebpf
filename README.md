@@ -88,7 +88,7 @@ flowchart LR
 | macvlan、ipvlan | 已验证同机通信；未验证外部物理网络、ipvlan L3 |
 | Swarm overlay、其他插件 | 不限制发现，具体路径尚未验证 |
 
-v1 socket-trace 当前是 IPv4/IPv6 TCP/UDP MVP，特权 Linux 实测尚未执行（NOT RUN），不保证 RAW/ICMP 覆盖。TX 在 `__ip_local_out` / `__ip6_local_out`、RX 在 TCP/UDP 接收探针观察 skb；与 v2 的观察点不同，不能要求两种后端计数逐包一致。
+v1 socket-trace 当前是 IPv4/IPv6 TCP/UDP MVP，已在真实 v1/v2 Linux 环境验证，不保证 RAW/ICMP 覆盖。TX 在 `ip_output` / `ip6_output`、RX 在 TCP/UDP 接收探针观察 skb；与 v2 的观察点不同，不能要求两种后端计数逐包一致。
 
 Bytes 是 Hook 处 `skb->len`，Packets 是 Hook 调用次数，**不是网卡物理包数或应用 payload**。不采集 Unix Socket；纯转发、全部 RAW Socket、隧道及 Socket 传递场景不保证完整覆盖。发现前的流量不能追回；Agent 重启会重置计数。
 

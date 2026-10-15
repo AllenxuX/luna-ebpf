@@ -2,7 +2,7 @@
 
 ## Docker Compose
 
-Linux + Docker Engine + Compose v2 + cgroup v1/v2。既有 cgroup v2 / cgroup-skb 验证环境为 Rocky Linux 9.7 / 内核5.14 / Docker29.5.2。amd64已实测，arm64仅构建验证；v1 socket-trace 特权实测尚未执行（NOT RUN）。
+Linux + Docker Engine + Compose v2 + cgroup v1/v2。既有 cgroup v2 / cgroup-skb 验证环境为 Rocky Linux 9.7 / 内核5.14 / Docker29.5.2。amd64已实测，arm64仅构建验证；v1 socket-trace 已在真实 v1 启动环境验证。
 
 ```bash
 docker compose up -d --build
