@@ -2,7 +2,7 @@ GO ?= go
 BPF_CLANG ?= clang
 BPF_STRIP ?= llvm-strip
 ARCH ?= $(shell $(GO) env GOARCH)
-VERSION ?= 0.1.2
+VERSION ?= 0.1.3
 IMAGE_REPOSITORY ?= luna-ebpf
 IMAGE = $(IMAGE_REPOSITORY):$(VERSION)
 

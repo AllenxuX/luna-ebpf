@@ -2,7 +2,7 @@ services:
   luna-ebpf:
     build:
       context: .
-    image: luna-ebpf:0.1.2
+    image: luna-ebpf:0.1.3
     pull_policy: build
     restart: unless-stopped
     network_mode: host

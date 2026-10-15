@@ -13,8 +13,53 @@ import (
 
 type Resolver struct {
 	Root, Proc string
+	Controller string
 	MaxNodes   int
 	Handle     func(string) ([]byte, error)
+}
+
+func ParseFor(contents, controller string) (string, error) {
+	if controller == "" {
+		return Parse(contents)
+	}
+	return ParseV1(contents, controller)
+}
+
+func ParseV1(contents, controller string) (string, error) {
+	if controller == "" || strings.ContainsAny(controller, ",:\n/") {
+		return "", fmt.Errorf("invalid cgroup v1 controller %q", controller)
+	}
+	var result string
+	for _, line := range strings.Split(contents, "\n") {
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		match := false
+		for _, name := range strings.Split(parts[1], ",") {
+			if name == controller {
+				match = true
+			}
+		}
+		if !match {
+			continue
+		}
+		hierarchy, err := strconv.Atoi(parts[0])
+		if err != nil || hierarchy <= 0 {
+			return "", fmt.Errorf("invalid cgroup v1 hierarchy %q", parts[0])
+		}
+		if result != "" {
+			return "", fmt.Errorf("multiple cgroup entries for %s", controller)
+		}
+		result, err = Parse("0::" + parts[2])
+		if err != nil {
+			return "", err
+		}
+	}
+	if result == "" {
+		return "", fmt.Errorf("missing cgroup v1 controller %s", controller)
+	}
+	return result, nil
 }
 
 func Parse(contents string) (string, error) {
@@ -73,7 +118,7 @@ func (r *Resolver) Resolve(pid int) (string, []uint64, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("read %s: %w", procFile, err)
 	}
-	p, err := Parse(string(b))
+	p, err := ParseFor(string(b), r.Controller)
 	if err != nil {
 		return "", nil, err
 	}

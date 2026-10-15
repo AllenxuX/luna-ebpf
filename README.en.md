@@ -18,7 +18,7 @@ Built with Go, cilium/ebpf and bpf2go. Socket cgroup identity attributes traffic
 
 ## Quick start
 
-Requires Linux, Docker Engine, Docker Compose v2 and cgroup v2.
+Requires Linux, Docker Engine, Docker Compose v2 and cgroup v1 or v2. The v1 socket-trace MVP requires readable kernel BTF and the required kprobes; old kernels without BTF are unsupported by this backend.
 
 ```bash
 git clone https://github.com/AllenxuX/luna-ebpf.git
@@ -28,7 +28,7 @@ curl -fsS http://127.0.0.1:9808/readyz
 curl -fsS http://127.0.0.1:9808/metrics
 ```
 
-Compose builds `luna-ebpf:0.1.2` locally from source. No published project image is required. The first build downloads base images, dependencies and compiler tools. Stop with `docker compose down`.
+Compose builds `luna-ebpf:0.1.3` locally from source. No published project image is required. The first build downloads base images, dependencies and compiler tools. Stop with `docker compose down`.
 
 The default listener is localhost. Compose uses privileged host PID/cgroup/network access. A read-only Docker socket mount does not restrict Engine API access. HTTP has no built-in authentication or TLS; secure remote scrapes with your network controls.
 
@@ -55,9 +55,13 @@ Import the [Grafana dashboard](deploy/grafana/luna-ebpf-dashboard.json) and sele
 
 ## Architecture and scope
 
-Docker list/inspect/events → host PID cgroup path → `name_to_handle_at()` → cgroup allowlist → root `cgroup_skb` ingress/egress → Per-CPU maps → Go aggregation → `/metrics`.
+Docker list/inspect/events → host PID cgroup path → `name_to_handle_at()` → explicit cgroup allowlist → selected BPF backend → Per-CPU maps → Go aggregation → `/metrics`.
 
-All BPF paths accept packets. Host, default/custom bridge and shared netns TCP/UDP attribution have been validated. `none` is discovered with zero IP traffic. Macvlan/ipvlan tests cover same-host communication using dummy parents, not external networks or ipvlan L3. Other network drivers are discovered but their paths have not been verified.
+`--collector-backend auto` keeps cgroup-skb on v2 and uses socket-trace on v1, selecting a mounted controller hierarchy with memory preferred. Explicit choices are `auto`, `cgroup-skb` and `socket-trace`; socket-trace can also be forced on v2. Kernel layouts come from BTF without guessed offsets.
+
+All BPF paths preserve packet verdicts. On cgroup v2 / cgroup-skb, host, default/custom bridge and shared netns TCP/UDP attribution have been validated. `none` is discovered with zero IP traffic. Macvlan/ipvlan tests cover same-host communication using dummy parents, not external networks or ipvlan L3. Other network drivers are discovered but their paths have not been verified.
+
+The v1 socket-trace MVP covers IPv4/IPv6 TCP/UDP, without guaranteed RAW/ICMP coverage. Privileged v1 runtime validation is NOT RUN. TX observes `__ip_local_out` / `__ip6_local_out`; RX observes TCP/UDP receive probes. These differ from v2 hooks, so packet-exact equality across backends is not expected.
 
 Bytes are skb length and packets are hook invocations, not application payload or physical wire packets. AF_UNIX, pure forwarding and all RAW/tunnel/socket-transfer paths are outside guaranteed coverage. Discovery windows can miss traffic; agent restarts reset counters.
 

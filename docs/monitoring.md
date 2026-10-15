@@ -18,7 +18,7 @@ scrape_configs:
 
 导入[Dashboard JSON](../deploy/grafana/luna-ebpf-dashboard.json)，选择Prometheus数据源和job/instance/容器。包含18个面板：RX/TX速率、skb/s、累计值、健康状态与错误诊断。
 
-速率使用rate处理Counter重置。标签不含network_mode。零流量不代表异常，不应默认告警。
+速率使用rate处理Counter重置。两种后端保持相同指标名和标签，标签不含network_mode或backend。零流量不代表异常，不应默认告警。cgroup-skb与socket-trace的Hook观察点不同，不要求字节数或skb次数逐包一致；更换后端时应记录部署时间并重新评估基线。
 
 ## n9e
 
@@ -59,7 +59,7 @@ sum by(job, instance, container_id, container_name)(rate(luna_container_tx_bytes
 | luna_exporter_poll_errors_total | 采样或生命周期Map操作错误 |
 | luna_exporter_discovery_errors_total | 发现失败或跳过 |
 | luna_exporter_event_reconnects_total | 事件连接尝试，包含首次连接 |
-| luna_exporter_unattributed_bytes_total | helper返回ID=0的匿名字节 |
-| luna_exporter_unattributed_packets_total | helper返回ID=0的匿名skb次数 |
+| luna_exporter_unattributed_bytes_total | cgroup-skb helper返回ID=0，或socket-trace未知Socket owner的skb字节 |
+| luna_exporter_unattributed_packets_total | 上述观察点的匿名skb次数 |
 
 匿名计数带direction标签，不表示其他容器流量，也不能当作漏采总量。完整口径见[指标语义](metric-semantics.md)。

@@ -26,7 +26,16 @@ def read(name):
     return rows
 
 
-if mode == 'growth':
+if mode == 'payload':
+    before, after, filename, cid, direction = args
+    payload = read_json(filename)['end']
+    sent = payload.get('sum_sent', payload.get('sum', {})).get('bytes', 0)
+    assert sent > 0, 'missing positive iperf payload byte count'
+    key = (cid, f'luna_container_{direction}_bytes_total')
+    delta = read(after)[key][0] - read(before)[key][0]
+    assert delta >= sent * 0.90, f'{cid} {direction}: hook delta {delta} below 90% of payload {sent}'
+    print(f'{after}: {cid} {direction} hook bytes={delta}, iperf payload={sent}')
+elif mode == 'growth':
     before, after, *pairs = args
     a, b = read(before), read(after)
     for cid, direction in zip(pairs[::2], pairs[1::2]):
@@ -61,12 +70,16 @@ elif mode == 'detached':
     baseline = read_json('baseline-links.json')
     ids_before = {row['id'] for row in before} - {row['id'] for row in baseline}
     ids_after = {row['id'] for row in after}
-    assert ids_before and not ids_before.intersection(ids_after), 'agent attachment leaked'
+    # socket-trace attaches kprobes, not cgroup links; map teardown below
+    # still verifies the owned resources while preserving prior root links.
+    if not args or args[0] != 'socket-trace':
+        assert ids_before, 'expected cgroup attachments missing'
+    assert not ids_before.intersection(ids_after), 'agent attachment leaked'
     assert {row['id'] for row in baseline} <= ids_after, 'pre-existing attachment disappeared'
     maps_baseline = read_json('baseline-maps.json')
     maps_attached = read_json('attached-maps.json')
     maps_after = read_json('detached-maps.json')
-    own_maps = {r['id'] for r in maps_attached if r.get('name', '').startswith(('traffic', 'monitored_cg', 'diagnostic_co'))} - {r['id'] for r in maps_baseline}
+    own_maps = {r['id'] for r in maps_attached if r.get('name', '').startswith(('traffic', 'monitored_cg', 'diagnostic_co', 'socket_owners', 'inode_owners', 'sockettr'))} - {r['id'] for r in maps_baseline}
     assert own_maps and not own_maps.intersection({r['id'] for r in maps_after}), 'agent map leaked'
 else:
     raise AssertionError(f'unknown check {mode}')

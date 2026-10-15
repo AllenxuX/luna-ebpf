@@ -23,6 +23,10 @@ class AssertionTests(unittest.TestCase):
 
             self.assertEqual(run('growth', 'before', 'after', 'a', 'rx').returncode, 0)
             self.assertNotEqual(run('growth', 'after', 'before', 'a', 'rx').returncode, 0)
+            (root / 'payload.json').write_text(json.dumps({'end': {'sum_sent': {'bytes': 10000}}}))
+            self.assertNotEqual(run('payload', 'before', 'after', 'payload.json', 'a', 'rx').returncode, 0)
+            (root / 'payload.json').write_text(json.dumps({'end': {'sum_sent': {'bytes': 80}}}))
+            self.assertEqual(run('payload', 'before', 'after', 'payload.json', 'a', 'rx').returncode, 0)
             self.assertEqual(run('absent', 'after', 'bridge').returncode, 0)
             self.assertNotEqual(run('absent', 'after', 'a').returncode, 0)
             self.assertNotEqual(run('idle', 'before', 'after', 'a').returncode, 0)

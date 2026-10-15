@@ -1,8 +1,8 @@
 package metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/AllenxuX/luna-ebpf/internal/collector"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Collector struct {
@@ -13,15 +13,15 @@ type Collector struct {
 func New(s *collector.Store) *Collector {
 	c := &Collector{store: s, desc: map[string]*prometheus.Desc{}}
 	for name, help := range map[string]string{
-		"luna_container_rx_bytes_total":   "Cumulative socket ingress skb bytes at the cgroup hook.",
-		"luna_container_tx_bytes_total":   "Cumulative socket egress skb bytes at the cgroup hook.",
-		"luna_container_rx_packets_total": "Cumulative socket ingress skb hook invocations, not wire packets.",
-		"luna_container_tx_packets_total": "Cumulative socket egress skb hook invocations, not wire packets.",
+		"luna_container_rx_bytes_total":   "Cumulative socket ingress skb bytes at the selected backend observation point.",
+		"luna_container_tx_bytes_total":   "Cumulative socket egress skb bytes at the selected backend observation point.",
+		"luna_container_rx_packets_total": "Cumulative socket ingress skb observations, not wire packets.",
+		"luna_container_tx_packets_total": "Cumulative socket egress skb observations, not wire packets.",
 	} {
 		c.desc[name] = prometheus.NewDesc(name, help, []string{"container_id", "container_name"}, nil)
 	}
 	for name, help := range map[string]string{
-		"luna_exporter_up":                             "Both BPF links attached and the latest map poll successful.",
+		"luna_exporter_up":                             "Selected BPF backend attached and the latest map poll successful.",
 		"luna_exporter_docker_connected":               "Latest Docker inventory request and event stream health.",
 		"luna_exporter_containers":                     "Running discovered Docker containers across all network modes.",
 		"luna_exporter_map_insert_failures_total":      "Traffic map insert failures excluding concurrent EEXIST.",
@@ -33,8 +33,8 @@ func New(s *collector.Store) *Collector {
 	} {
 		c.desc[name] = prometheus.NewDesc(name, help, nil, nil)
 	}
-	c.desc["luna_exporter_unattributed_bytes_total"] = prometheus.NewDesc("luna_exporter_unattributed_bytes_total", "Hook bytes with socket cgroup ID zero only.", []string{"direction"}, nil)
-	c.desc["luna_exporter_unattributed_packets_total"] = prometheus.NewDesc("luna_exporter_unattributed_packets_total", "Hook invocations with socket cgroup ID zero only.", []string{"direction"}, nil)
+	c.desc["luna_exporter_unattributed_bytes_total"] = prometheus.NewDesc("luna_exporter_unattributed_bytes_total", "Observed bytes with unresolved socket owner: v2 helper ID zero or socket tracing ownership unavailable.", []string{"direction"}, nil)
+	c.desc["luna_exporter_unattributed_packets_total"] = prometheus.NewDesc("luna_exporter_unattributed_packets_total", "Observed skbs with unresolved socket owner: v2 helper ID zero or socket tracing ownership unavailable.", []string{"direction"}, nil)
 	return c
 }
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {

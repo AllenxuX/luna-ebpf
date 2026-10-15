@@ -8,3 +8,4 @@ container_stale_grace_period: "60s"
 log_level: "info"
 map_max_entries: 8192
 cgroup_subtree_max_nodes: 1024
+collector_backend: "auto"

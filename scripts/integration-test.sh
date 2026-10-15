@@ -10,6 +10,10 @@ mkdir -p "$out"
 port=${IPERF_PORT:-15201}
 tcp_bandwidth=${TCP_BANDWIDTH:-100M}
 http_port=${EXPORTER_PORT:-19808}
+collector_backend=${COLLECTOR_BACKEND:-auto}
+cgroup_version=$(docker info --format '{{.CgroupVersion}}')
+attachment_backend=$collector_backend
+if [[ $cgroup_version == 1 && $collector_backend == auto ]]; then attachment_backend=socket-trace; fi
 url="http://127.0.0.1:$http_port"
 prefix="luna-test-$$"
 server="$prefix-server"; client="$prefix-client"; idle="$prefix-idle"; bridge="$prefix-bridge"
@@ -28,14 +32,17 @@ docker run -d --name "$client" --network host "$image" sleep 3600 >"$out/client.
 docker run -d --name "$idle" --network host "$image" sleep 3600 >"$out/idle.id"
 docker run -d --name "$bridge" "$image" sleep 3600 >"$out/bridge.id"
 start_agent() {
-  "$binary" --listen-address "127.0.0.1:$http_port" --metrics-poll-interval 1s --docker-reconcile-interval 2s --container-stale-grace-period 3s >"$out/agent.log" 2>&1 & agent_pid=$!
+  "$binary" --collector-backend "$collector_backend" --listen-address "127.0.0.1:$http_port" --metrics-poll-interval 1s --docker-reconcile-interval 2s --container-stale-grace-period 3s >"$out/agent.log" 2>&1 & agent_pid=$!
   for ((i=0;i<30;i++)); do if curl -fsS "$url/readyz" >/dev/null; then return; fi; sleep 1; done
   echo 'FAIL: exporter not ready'; cat "$out/agent.log"; exit 1
 }
 snapshot() { sleep 2; curl -fsS "$url/metrics" >"$out/$1.metrics"; }
 check() { python3 scripts/check-integration.py "$out" "$@"; }
+dump_cgroup_links() {
+  if [[ $cgroup_version == 1 ]]; then printf '[]\n'; else bpftool -j cgroup show /sys/fs/cgroup; fi
+}
 if command -v bpftool >/dev/null; then
-  bpftool -j cgroup show /sys/fs/cgroup >"$out/baseline-links.json"
+  dump_cgroup_links >"$out/baseline-links.json"
   bpftool -j map show >"$out/baseline-maps.json"
 fi
 start_agent
@@ -43,16 +50,24 @@ snapshot baseline
 docker exec "$client" iperf3 -c 127.0.0.1 -p "$port" -t 10 -b "$tcp_bandwidth" -J >"$out/tcp-payload.json"
 snapshot tcp
 check growth baseline tcp "$(cat "$out/server.id")" rx "$(cat "$out/client.id")" tx
+check payload baseline tcp tcp-payload.json "$(cat "$out/client.id")" tx
+check payload baseline tcp tcp-payload.json "$(cat "$out/server.id")" rx
 check idle baseline tcp "$(cat "$out/idle.id")"
 docker exec "$client" iperf3 -c 127.0.0.1 -p "$port" -t 10 -b "$tcp_bandwidth" -R -J >"$out/tcp-reverse-payload.json"
 snapshot reverse
 check growth tcp reverse "$(cat "$out/client.id")" rx "$(cat "$out/server.id")" tx
+check payload tcp reverse tcp-reverse-payload.json "$(cat "$out/server.id")" tx
+check payload tcp reverse tcp-reverse-payload.json "$(cat "$out/client.id")" rx
 docker exec "$client" iperf3 -c 127.0.0.1 -p "$port" -t 10 -u -b 10M -J >"$out/udp-payload.json"
 snapshot udp
 check growth reverse udp "$(cat "$out/server.id")" rx "$(cat "$out/client.id")" tx
+check payload reverse udp udp-payload.json "$(cat "$out/client.id")" tx
+check payload reverse udp udp-payload.json "$(cat "$out/server.id")" rx
 docker exec "$client" iperf3 -c 127.0.0.1 -p "$port" -t 10 -u -R -b 10M -J >"$out/udp-reverse-payload.json"
 snapshot udp-reverse
 check growth udp udp-reverse "$(cat "$out/client.id")" rx "$(cat "$out/server.id")" tx
+check payload udp udp-reverse udp-reverse-payload.json "$(cat "$out/server.id")" tx
+check payload udp udp-reverse udp-reverse-payload.json "$(cat "$out/client.id")" rx
 check present udp-reverse "$(cat "$out/bridge.id")"
 # Host traffic legitimately reaches server RX, but must not grow the idle client counters.
 iperf3 -c 127.0.0.1 -p "$port" -t 3 -b "$tcp_bandwidth" -J >"$out/host-payload.json"
@@ -82,14 +97,14 @@ docker run -d --name "$client" --network host "$image" sleep 3600 >"$out/client.
 snapshot recreated
 check present recreated "$(cat "$out/client.id")"
 if command -v bpftool >/dev/null; then
-  bpftool -j cgroup show /sys/fs/cgroup >"$out/attached-before.json"
+  dump_cgroup_links >"$out/attached-before.json"
   bpftool -j map show >"$out/attached-maps.json"
 fi
 kill -TERM "$agent_pid"; wait "$agent_pid"; agent_pid=''
 if command -v bpftool >/dev/null; then
-  bpftool -j cgroup show /sys/fs/cgroup >"$out/detached.json"
+  dump_cgroup_links >"$out/detached.json"
   bpftool -j map show >"$out/detached-maps.json"
-  check detached
+  check detached "$attachment_backend"
 else echo 'NOT RUN: bpftool attachment leak check'; fi
 start_agent
 snapshot agent-restart

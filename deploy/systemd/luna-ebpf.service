@@ -1,5 +1,5 @@
 [Unit]
-Description=luna-ebpf Docker host-network socket traffic exporter
+Description=luna-ebpf Docker container socket traffic exporter
 Documentation=https://github.com/AllenxuX/luna-ebpf
 Wants=docker.service
 After=docker.service network.target

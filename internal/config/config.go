@@ -13,6 +13,7 @@ import (
 )
 
 type Config struct {
+	Backend      string        `yaml:"collector_backend"`
 	Listen       string        `yaml:"listen_address"`
 	DockerSocket string        `yaml:"docker_socket"`
 	CgroupRoot   string        `yaml:"cgroup_root"`
@@ -28,7 +29,7 @@ type Config struct {
 }
 
 func Default() Config {
-	return Config{Listen: "127.0.0.1:9808", DockerSocket: "/var/run/docker.sock", CgroupRoot: "/sys/fs/cgroup", ProcRoot: "/proc", Poll: 5 * time.Second, Reconcile: 30 * time.Second, Grace: 60 * time.Second, LogLevel: "info", MapEntries: 8192, MaxNodes: 1024}
+	return Config{Backend: "auto", Listen: "127.0.0.1:9808", DockerSocket: "/var/run/docker.sock", CgroupRoot: "/sys/fs/cgroup", ProcRoot: "/proc", Poll: 5 * time.Second, Reconcile: 30 * time.Second, Grace: 60 * time.Second, LogLevel: "info", MapEntries: 8192, MaxNodes: 1024}
 }
 func Parse(args []string) (Config, error) {
 	c := Default()
@@ -66,7 +67,8 @@ func Parse(args []string) (Config, error) {
 	flags.StringVar(&configFile, "config", configFile, "YAML file")
 	flags.StringVar(&c.Listen, "listen-address", c.Listen, "HTTP listen address")
 	flags.StringVar(&c.DockerSocket, "docker-socket", c.DockerSocket, "local Docker Engine Unix socket")
-	flags.StringVar(&c.CgroupRoot, "cgroup-root", c.CgroupRoot, "host cgroup v2 root")
+	flags.StringVar(&c.CgroupRoot, "cgroup-root", c.CgroupRoot, "host cgroup hierarchy root")
+	flags.StringVar(&c.Backend, "collector-backend", c.Backend, "auto/cgroup-skb/socket-trace")
 	flags.StringVar(&c.ProcRoot, "proc-root", c.ProcRoot, "host proc root")
 	flags.DurationVar(&c.Poll, "metrics-poll-interval", c.Poll, "map sample interval")
 	flags.DurationVar(&c.Reconcile, "docker-reconcile-interval", c.Reconcile, "inventory and child-cgroup scan interval")
@@ -92,6 +94,11 @@ func Parse(args []string) (Config, error) {
 	}
 	if _, _, err := net.SplitHostPort(c.Listen); err != nil {
 		return c, fmt.Errorf("listen address: %w", err)
+	}
+	switch c.Backend {
+	case "auto", "cgroup-skb", "socket-trace":
+	default:
+		return c, fmt.Errorf("invalid collector backend %q", c.Backend)
 	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":

@@ -5,9 +5,11 @@ import ctypes, json, os, pathlib, re, subprocess, time, urllib.request
 root = pathlib.Path(os.environ.get('RESULT_DIR', 'test-results/all-networks'))
 root.mkdir(parents=True, exist_ok=True)
 image = os.environ.get('TEST_IMAGE', 'luna-ebpf-iperf-test:alpine3.21.3')
-agent_image = os.environ.get('AGENT_IMAGE', 'luna-ebpf:0.1.2')
+agent_image = os.environ.get('AGENT_IMAGE', 'luna-ebpf:0.1.3')
+collector_backend = os.environ.get('COLLECTOR_BACKEND', 'auto')
 prefix = 'luna-all-' + str(os.getpid())
 names, networks, ids, results = [], [], {}, []
+agent = None
 dummy = 'luna' + str(os.getpid())
 dummy_created = False
 parents = []
@@ -27,6 +29,10 @@ def snapshot(label):
     time.sleep(3)
     text = urllib.request.urlopen(url + '/metrics', timeout=10).read().decode()
     (root / (label + '.metrics')).write_text(text)
+    reference = os.environ.get('REFERENCE_URL')
+    if reference:
+        ref = urllib.request.urlopen(reference + '/metrics', timeout=10).read().decode()
+        (root / (label + '-reference.metrics')).write_text(ref)
     assert 'luna_exporter_up 1' in text
     rows = {}
     for line in text.splitlines():
@@ -48,21 +54,63 @@ def cgroup_id(path):
     assert handle.size == 8
     return int.from_bytes(bytes(handle.data), 'little')
 
+def cgroup_hierarchy(version, mountinfo):
+    if version not in ('1', '2'):
+        raise ValueError('unsupported Docker cgroup version: ' + version)
+    mounts = []
+    for line in mountinfo.splitlines():
+        before, separator, after = line.partition(' - ')
+        fields, filesystem = before.split(), after.split()
+        if not separator or len(fields) < 5 or len(filesystem) < 3 or fields[3] != '/':
+            continue
+        mount = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), fields[4])
+        path = pathlib.Path(mount)
+        if path != pathlib.Path('/sys/fs/cgroup') and pathlib.Path('/sys/fs/cgroup') not in path.parents:
+            continue
+        mounts.append((path, filesystem[0], filesystem[2].split(',')))
+    if version == '2':
+        for path, kind, _ in mounts:
+            if kind == 'cgroup2':
+                return path, ''
+    else:
+        for controller in ('memory', 'pids', 'cpuset', 'cpu', 'cpuacct', 'blkio', 'devices', 'freezer', 'net_cls', 'net_prio', 'hugetlb', 'perf_event'):
+            for path, kind, options in mounts:
+                if kind == 'cgroup' and controller in options:
+                    try:
+                        cgroup_id(path)  # Match the agent's usable-hierarchy selection.
+                    except (AssertionError, OSError):
+                        continue
+                    return path, controller
+    raise RuntimeError('no full-root cgroup hierarchy found for Docker version ' + version)
+
+
 def container_cgroups(name):
     pid = run('docker', 'inspect', name, '--format', '{{.State.Pid}}')
-    path = pathlib.Path('/proc/' + pid + '/cgroup').read_text().split('::', 1)[1].strip()
-    base = pathlib.Path('/sys/fs/cgroup' + path)
+    paths = []
+    for line in pathlib.Path('/proc/' + pid + '/cgroup').read_text().splitlines():
+        hierarchy, controllers, path = line.split(':', 2)
+        if (not cgroup_controller and hierarchy == '0' and not controllers) or (cgroup_controller and cgroup_controller in controllers.split(',')):
+            paths.append(path)
+    assert len(paths) == 1, ('ambiguous/missing container cgroup', name, paths)
+    relative = pathlib.PurePosixPath(paths[0])
+    assert relative.is_absolute() and '..' not in relative.parts, paths[0]
+    base = cgroup_mount.joinpath(*relative.parts[1:])
     return {cgroup_id(base)} | {cgroup_id(child) for child in base.rglob('*') if child.is_dir()}
 
-def traffic(label, sender, receiver, address, port, udp=False, reverse=False):
+
+def traffic(label, sender, receiver, address, port, udp=False, reverse=False, parallel=1):
     before = snapshot(label + '-before')
     args = ['docker', 'exec', prefix + '-' + sender, 'iperf3', '-c', address,
             '-p', str(port), '-t', '6', '-b', '5M' if udp else '20M', '-J']
     if udp: args.append('-u')
     if reverse: args.append('-R')
+    if parallel > 1: args.extend(['-P', str(parallel)])
     payload = json.loads(run(*args))
     assert 'error' not in payload, payload
     (root / (label + '-payload.json')).write_text(json.dumps(payload, indent=2))
+    summary = payload['end'].get('sum_sent') or payload['end'].get('sum')
+    assert summary and summary['bytes'] > 0, (label, 'missing transferred bytes', payload['end'])
+    transferred = summary['bytes']
     after = snapshot(label + '-after')
     tx, rx = (receiver, sender) if reverse else (sender, receiver)
     delta = {}
@@ -70,16 +118,27 @@ def traffic(label, sender, receiver, address, port, udp=False, reverse=False):
         for unit in ['bytes', 'packets']:
             d = value(after, role, direction, unit) - value(before, role, direction, unit)
             assert d > 0, (label, role, direction, unit, d)
+            if unit == 'bytes':
+                assert d >= transferred * 0.9, (label, role, direction, 'missing payload attribution', d, transferred)
+                assert d <= transferred * 1.25, (label, role, direction, 'possible duplicate accounting', d, transferred)
             delta[role + '_' + direction + '_' + unit] = d
     for role in ids:
         if role not in (sender, receiver):
             for direction in ['rx', 'tx']:
                 for unit in ['bytes', 'packets']:
                     assert value(after, role, direction, unit) == value(before, role, direction, unit), (label, 'cross attribution', role)
-    results.append(dict(test=label, delta=delta))
+    results.append(dict(test=label, transferred_bytes=transferred, delta=delta))
     print('PASS', label, delta, flush=True)
 
 try:
+    (root / 'environment.json').write_text(json.dumps({
+        'kernel': run('uname', '-r'),
+        'docker_cgroup_version': run('docker', 'info', '--format', '{{.CgroupVersion}}'),
+        'requested_backend': collector_backend, 'agent_image': agent_image,
+    }, indent=2))
+    cgroup_version = run('docker', 'info', '--format', '{{.CgroupVersion}}')
+    cgroup_mount, cgroup_controller = cgroup_hierarchy(cgroup_version, pathlib.Path('/proc/self/mountinfo').read_text())
+    (root / 'environment.json').write_text(json.dumps(dict(cgroup_version=cgroup_version, cgroup_mount=str(cgroup_mount), cgroup_controller=cgroup_controller, collector_backend=collector_backend, agent_image=agent_image), indent=2))
     network = prefix + '-net'
     networks.append(network)
     run('docker', 'network', 'create', network)
@@ -109,18 +168,28 @@ try:
         '-v', '/proc:/host/proc:ro', '-v', '/var/run/docker.sock:/var/run/docker.sock:ro',
         agent_image, '--proc-root', '/host/proc', '--listen-address', '127.0.0.1:19814',
         '--metrics-poll-interval', '1s', '--docker-reconcile-interval', '2s',
-        '--container-stale-grace-period', '3s')
+        '--container-stale-grace-period', '3s', '--collector-backend', collector_backend)
     for _ in range(30):
         try:
             urllib.request.urlopen(url + '/readyz', timeout=2)
             break
         except Exception: time.sleep(1)
+    else:
+        raise RuntimeError('exporter did not become ready within 30 attempts')
     baseline = snapshot('baseline')
     for role in ids:
-        assert value(baseline, role, 'tx', 'bytes') == 0
+        # A reused Docker IP can receive legitimate late TCP packets from a
+        # previous test. Compare stage deltas, not assumed zero initial totals.
+        assert value(baseline, role, 'tx', 'bytes') >= 0
+    for direction in ['rx', 'tx']:
+        for unit in ['bytes', 'packets']:
+            assert value(baseline, 'none', direction, unit) == 0, ('none must start at zero', direction, unit)
     gateway = run('docker', 'inspect', bridge, '--format', '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}')
     address = run('docker', 'inspect', custom, '--format', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
     traffic('host-tcp', 'host-client', 'host-server', '127.0.0.1', 15341)
+    traffic('dual-stack-ipv4-parallel', 'host-client', 'host-server', '127.0.0.1', 15341, parallel=8)
+    traffic('host-ipv6-tcp-reverse', 'host-client', 'host-server', '::1', 15341, reverse=True)
+    traffic('host-ipv6-udp-reverse', 'host-client', 'host-server', '::1', 15341, udp=True, reverse=True)
     traffic('bridge-to-host-tcp', 'bridge', 'host-server', gateway, 15341)
     traffic('bridge-to-host-udp-reverse', 'bridge', 'host-server', gateway, 15341, udp=True, reverse=True)
     traffic('custom-bridge-tcp', 'custom-client', 'custom-server', address, 15342)
@@ -155,10 +224,17 @@ try:
     for mid in set(map_ids):
         info = json.loads(run('bpftool', '-j', 'map', 'show', 'id', str(mid)))
         if isinstance(info, list): info = info[0]
-        if info['name'] != 'traffic' and not info['name'].startswith('monitored_cg'): continue
+        owner_map = info['name'] in ('socket_owners', 'inode_owners')
+        if info['name'] != 'traffic' and not info['name'].startswith('monitored_cg') and not owner_map: continue
         raw = run('bpftool', '-j', 'map', 'dump', 'id', str(mid))
         dumps[info['name']] = json.loads(raw) if raw else []
         for row in dumps[info['name']]:
+            if owner_map:
+                value = row['value']
+                if isinstance(value, list):
+                    value = int.from_bytes(bytes(int(x, 16) for x in value[:8]), 'little')
+                assert isinstance(value, int) and value not in retired_ids, ('retired socket owner', value)
+                continue
             key = row.get('key')
             if isinstance(key, list):
                 assert int.from_bytes(bytes(int(x, 16) for x in key[:8]), 'little') not in retired_ids
@@ -166,11 +242,15 @@ try:
                 assert key.get('cgroup_id') not in retired_ids
             elif isinstance(key, int): assert key not in retired_ids
             else: raise AssertionError(('unsupported map key', key))
-    assert len(dumps) == 2, dumps.keys()
+    assert len(dumps) in (2, 4), dumps.keys()
+    if 'socket_owners' in dumps: assert 'inode_owners' in dumps
     (root / 'retired-maps.json').write_text(json.dumps(dumps, indent=2))
     results.append(dict(test='bridge-restart-retire-map-cleanup', retired_cgroups=sorted(retired_ids), passed=True))
     print('PASS bridge restart, retirement and map cleanup', flush=True)
 finally:
+    if agent:
+        log = subprocess.run(['docker', 'logs', agent], text=True, capture_output=True)
+        (root / 'agent.log').write_text(log.stdout + log.stderr)
     for name in reversed(names):
         subprocess.run(['docker', 'rm', '-f', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for network in networks:

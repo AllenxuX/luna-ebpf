@@ -8,15 +8,19 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/AllenxuX/luna-ebpf/internal/collector"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
-	"github.com/AllenxuX/luna-ebpf/internal/collector"
 )
 
 type Loader struct {
-	objects trafficObjects
-	links   []link.Link
+	objects              trafficObjects
+	links                []link.Link
+	trace                *sockettraceObjects
+	procRoot, controller string
+	socketCapacity       uint32
+	initUID              bool
 }
 
 func Load(entries uint32) (*Loader, error) {
@@ -49,6 +53,9 @@ func Load(entries uint32) (*Loader, error) {
 
 // Attach is called only after the initial inventory has populated the allowlist.
 func (l *Loader) Attach(root string) error {
+	if l.trace != nil {
+		return l.attachSocketTrace()
+	}
 	for _, p := range []struct {
 		program *ebpf.Program
 		kind    ebpf.AttachType
@@ -75,6 +82,14 @@ func (l *Loader) Remove(id uint64) error {
 	// Stop new accounting before deleting both direction keys. ENOENT is idempotent.
 	if err := l.objects.MonitoredCgroups.Delete(id); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
 		return err
+	}
+	if l.trace != nil {
+		if err := removeOwned(l.trace.SocketOwners, id); err != nil {
+			return err
+		}
+		if err := removeOwned(l.trace.InodeOwners, id); err != nil {
+			return err
+		}
 	}
 	for d := uint32(0); d < 2; d++ {
 		err := l.objects.Traffic.Delete(collector.TrafficKey{CgroupID: id, Direction: d})
@@ -123,6 +138,10 @@ func (l *Loader) Close() error {
 		errs = append(errs, v.Close())
 	}
 	l.links = nil
-	errs = append(errs, l.objects.Close())
+	if l.trace != nil {
+		errs = append(errs, l.trace.Close())
+	} else {
+		errs = append(errs, l.objects.Close())
+	}
 	return errors.Join(errs...)
 }

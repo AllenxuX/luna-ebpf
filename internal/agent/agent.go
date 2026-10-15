@@ -13,15 +13,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/moby/moby/client"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/AllenxuX/luna-ebpf/internal/bpf"
 	"github.com/AllenxuX/luna-ebpf/internal/cgroup"
 	"github.com/AllenxuX/luna-ebpf/internal/collector"
 	"github.com/AllenxuX/luna-ebpf/internal/config"
 	discovery "github.com/AllenxuX/luna-ebpf/internal/docker"
 	"github.com/AllenxuX/luna-ebpf/internal/metrics"
+	"github.com/moby/moby/client"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func Handler(s *collector.Store) http.Handler {
@@ -45,28 +45,10 @@ func Handler(s *collector.Store) http.Handler {
 }
 func Run(ctx context.Context, c config.Config) error {
 	if runtime.GOOS != "linux" {
-		return errors.New("Linux with host cgroup v2 is required; Windows supports portable unit tests only")
+		return errors.New("Linux with host cgroup v1 or v2 is required; Windows supports portable unit tests only")
 	}
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		return fmt.Errorf("supported architectures: amd64/arm64; got %s", runtime.GOARCH)
-	}
-	if err := cgroup.CheckRoot(c.CgroupRoot); err != nil {
-		return err
-	}
-	if _, err := cgroup.NativeHandle(c.CgroupRoot); err != nil {
-		return err
-	}
-	// Reject a cgroup namespace rooted below the host root: Docker PID paths
-	// must be interpreted in the same host cgroup and PID namespaces.
-	if err := CheckHostView(c.ProcRoot); err != nil {
-		return err
-	}
-	mountinfo, err := os.ReadFile(filepath.Join(c.ProcRoot, "self", "mountinfo"))
-	if err != nil {
-		return err
-	}
-	if err = ValidateMount(mountinfo, c.CgroupRoot); err != nil {
-		return err
 	}
 	cli, err := client.New(client.WithHost("unix://"+strings.TrimPrefix(c.DockerSocket, "unix://")), client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -89,18 +71,48 @@ func Run(ctx context.Context, c config.Config) error {
 	if err != nil {
 		return fmt.Errorf("Docker info: %w", err)
 	}
-	if system.Info.CgroupVersion != "2" {
-		return fmt.Errorf("Docker cgroup version=%q; v2 required", system.Info.CgroupVersion)
+	mode := system.Info.CgroupVersion
+	backend, err := selectBackend(mode, c.Backend)
+	if err != nil {
+		return err
 	}
-	slog.Info("preflight", "go", runtime.Version(), "arch", runtime.GOARCH, "docker_version", version.Version, "cgroup_driver", system.Info.CgroupDriver, "cgroup_version", system.Info.CgroupVersion)
-	d := &discovery.Discoverer{API: cli, Resolver: &cgroup.Resolver{Root: c.CgroupRoot, Proc: c.ProcRoot, MaxNodes: c.MaxNodes}}
+	root, controller := c.CgroupRoot, ""
+	if mode == "1" {
+		root, controller, err = cgroup.FindV1Root(root)
+		if err != nil {
+			return fmt.Errorf("cgroup v1 root: %w", err)
+		}
+	}
+	if err = cgroup.CheckRootVersion(root, "v"+mode); err != nil {
+		return err
+	}
+	if _, err = cgroup.NativeHandle(root); err != nil {
+		return err
+	}
+	if err = CheckHostViewFor(c.ProcRoot, controller); err != nil {
+		return err
+	}
+	mountinfo, err := os.ReadFile(filepath.Join(c.ProcRoot, "self", "mountinfo"))
+	if err != nil {
+		return err
+	}
+	if err = ValidateMountVersion(mountinfo, root, "v"+mode); err != nil {
+		return err
+	}
+	slog.Info("preflight", "go", runtime.Version(), "arch", runtime.GOARCH, "docker_version", version.Version, "cgroup_driver", system.Info.CgroupDriver, "cgroup_version", mode, "collector_backend", backend, "btf_required", backend == "socket-trace", "cgroup_controller", controller)
+	d := &discovery.Discoverer{API: cli, Resolver: &cgroup.Resolver{Root: root, Proc: c.ProcRoot, MaxNodes: c.MaxNodes, Controller: controller}}
 	callCtx, cancel = context.WithTimeout(ctx, 10*time.Second)
 	containers, skipped, err := d.List(callCtx)
 	cancel()
 	if err != nil {
 		return err
 	}
-	maps, err := bpf.Load(c.MapEntries)
+	var maps *bpf.Loader
+	if backend == "socket-trace" {
+		maps, err = bpf.LoadSocketTrace(c.MapEntries, c.ProcRoot, controller)
+	} else {
+		maps, err = bpf.Load(c.MapEntries)
+	}
 	if err != nil {
 		return err
 	}
@@ -112,7 +124,10 @@ func Run(ctx context.Context, c config.Config) error {
 	if err = engine.Reconcile(containers, time.Now()); err != nil {
 		return err
 	}
-	if err = maps.Attach(c.CgroupRoot); err != nil {
+	if err = maps.SyncContainers(containers); err != nil {
+		return fmt.Errorf("initialize socket ownership: %w", err)
+	}
+	if err = maps.Attach(root); err != nil {
 		return err
 	}
 	engine.Attached = true
@@ -120,7 +135,7 @@ func Run(ctx context.Context, c config.Config) error {
 		return err
 	}
 	if c.Check {
-		slog.Info("preflight successful; real programs loaded, both links attached, maps sampled; detaching")
+		slog.Info("preflight successful; selected backend loaded and attached, maps sampled; detaching")
 		return nil
 	}
 	listener, err := net.Listen("tcp", c.Listen)
@@ -143,7 +158,7 @@ func Run(ctx context.Context, c config.Config) error {
 	reconcile := time.NewTicker(c.Reconcile)
 	defer reconcile.Stop()
 	eventsOK := true
-	refresh := func() {
+	refresh := func() error {
 		// Capture the last available counters before retiring old cgroups.
 		if err := engine.Poll(time.Now()); err != nil {
 			slog.Error("map poll failed", "op", "poll", "error", err)
@@ -157,12 +172,17 @@ func Run(ctx context.Context, c config.Config) error {
 			engine.DockerConnected = false
 			engine.Publish()
 			slog.Error("Docker reconciliation failed; retaining inventory", "op", "reconcile", "error", err)
-			return
+			return nil
 		}
 		engine.DockerConnected = eventsOK
 		if err = engine.Reconcile(inventory, time.Now()); err != nil {
 			slog.Error("map reconciliation failed", "op", "reconcile_maps", "error", err)
+			return nil
 		}
+		if err = maps.SyncContainers(inventory); err != nil {
+			return fmt.Errorf("refresh socket ownership: %w", err)
+		}
+		return nil
 	}
 	slog.Info("exporter listening", "address", c.Listen)
 	for {
@@ -189,9 +209,13 @@ func Run(ctx context.Context, c config.Config) error {
 				eventsOK = true
 				engine.EventReconnects++
 			}
-			refresh()
+			if err := refresh(); err != nil {
+				return err
+			}
 		case <-reconcile.C:
-			refresh()
+			if err := refresh(); err != nil {
+				return err
+			}
 		case now := <-poll.C:
 			if err := engine.Poll(now); err != nil {
 				slog.Error("map poll failed", "op", "poll", "error", err)

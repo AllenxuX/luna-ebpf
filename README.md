@@ -19,7 +19,7 @@
 
 ## 快速开始
 
-需要 Linux、Docker Engine、Docker Compose v2 和 **cgroup v2**。运行时需要访问宿主机 PID/cgroup 与 Docker Socket，并具备加载和附加 BPF 的权限。
+需要 Linux、Docker Engine、Docker Compose v2 和 **cgroup v1 或 v2**。v1 使用 socket-trace MVP，要求可读的内核 BTF 和所需 kprobe；缺少 BTF 的旧内核不支持该后端。运行时需要访问宿主机 PID/cgroup 与 Docker Socket，并具备加载和附加 BPF 的权限。
 
 ```bash
 git clone https://github.com/AllenxuX/luna-ebpf.git
@@ -29,7 +29,7 @@ curl -fsS http://127.0.0.1:9808/readyz
 curl -fsS http://127.0.0.1:9808/metrics
 ```
 
-Compose 从源码构建本地 `luna-ebpf:0.1.2` 镜像，不依赖私有镜像仓库。首次构建需要下载基础镜像、Go 依赖和编译工具。Exporter 自身也会作为容器被发现。
+Compose 从源码构建本地 `luna-ebpf:0.1.3` 镜像，不依赖私有镜像仓库。首次构建需要下载基础镜像、Go 依赖和编译工具。Exporter 自身也会作为容器被发现。
 
 ```bash
 docker compose logs -f
@@ -67,7 +67,7 @@ sum by (instance, container_id, container_name) (
 flowchart LR
     D[Docker API / Events] --> C[PID → cgroup 内核句柄]
     C --> A[cgroup allowlist / 容器映射]
-    S[Socket ingress / egress] --> B[cgroup_skb eBPF]
+    S[Socket ingress / egress] --> B[cgroup-skb 或 socket-trace eBPF]
     A --> B
     B --> M[Per-CPU Map]
     M --> G[Go 聚合与累计]
@@ -75,16 +75,20 @@ flowchart LR
     G --> P[Prometheus /metrics]
 ```
 
-内核程序始终放行报文。RX/TX 分别归属接收/发送 Socket 的 cgroup；共享 netns 不意味着共享计数。
+默认 `--collector-backend auto`：v2 使用原有 cgroup-skb，v1 使用 socket-trace 并选择控制器层级（优先 memory）。可指定 `cgroup-skb` 或 `socket-trace`；v2 也可强制使用后者。socket-trace 从内核 BTF 读取结构布局，不猜测偏移。
+
+内核程序始终保留报文 verdict。RX/TX 分别归属接收/发送 Socket 的 cgroup；共享 netns 不意味着共享计数。
 
 ## 范围与限制
 
 | 场景 | 当前状态 |
 |---|---|
-| host、默认/自定义 bridge、共享 netns | 已验证 TCP/UDP 独立归属 |
+| host、默认/自定义 bridge、共享 netns | cgroup v2 / cgroup-skb 已验证 TCP/UDP 独立归属 |
 | none | 纳入发现，无 IP 流量时为零 |
 | macvlan、ipvlan | 已验证同机通信；未验证外部物理网络、ipvlan L3 |
 | Swarm overlay、其他插件 | 不限制发现，具体路径尚未验证 |
+
+v1 socket-trace 当前是 IPv4/IPv6 TCP/UDP MVP，特权 Linux 实测尚未执行（NOT RUN），不保证 RAW/ICMP 覆盖。TX 在 `__ip_local_out` / `__ip6_local_out`、RX 在 TCP/UDP 接收探针观察 skb；与 v2 的观察点不同，不能要求两种后端计数逐包一致。
 
 Bytes 是 Hook 处 `skb->len`，Packets 是 Hook 调用次数，**不是网卡物理包数或应用 payload**。不采集 Unix Socket；纯转发、全部 RAW Socket、隧道及 Socket 传递场景不保证完整覆盖。发现前的流量不能追回；Agent 重启会重置计数。
 

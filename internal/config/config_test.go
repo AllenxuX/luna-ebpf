@@ -27,3 +27,33 @@ func TestPrecedence(t *testing.T) {
 		t.Fatal("unknown yaml")
 	}
 }
+
+func TestCollectorBackend(t *testing.T) {
+	c, err := Parse(nil)
+	if err != nil || c.Backend != "auto" {
+		t.Fatalf("default: %+v, %v", c, err)
+	}
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(p, []byte("collector_backend: socket-trace\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	c, err = Parse([]string{"--config", p})
+	if err != nil || c.Backend != "socket-trace" {
+		t.Fatalf("YAML: %+v, %v", c, err)
+	}
+	c, err = Parse([]string{"--config", p, "--collector-backend", "cgroup-skb"})
+	if err != nil || c.Backend != "cgroup-skb" {
+		t.Fatalf("CLI: %+v, %v", c, err)
+	}
+	for _, value := range []string{"", "invalid", "AUTO"} {
+		if _, err := Parse([]string{"--collector-backend", value}); err == nil {
+			t.Fatalf("accepted %q", value)
+		}
+	}
+	if err := os.WriteFile(p, []byte("collector_backend: invalid\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse([]string{"--config", p}); err == nil {
+		t.Fatal("accepted invalid YAML backend")
+	}
+}
