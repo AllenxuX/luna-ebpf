@@ -7,6 +7,8 @@
 
 中文 | [English](README.en.md)
 
+预编译二进制、离线 Docker 镜像和 Compose 文件见 [Releases](https://github.com/AllenxuX/luna-ebpf/releases)。
+
 共享网络命名空间，也能按容器分别统计 RX/TX。luna-ebpf 使用 Go、[cilium/ebpf](https://github.com/cilium/ebpf) 和 bpf2go，通过 Socket 所属 cgroup 关联 Docker 容器，不使用共享网卡总量分摊流量。
 
 ## 功能

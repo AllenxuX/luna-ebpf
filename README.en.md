@@ -1,5 +1,7 @@
 # luna-ebpf
 
+Download binaries, the offline Docker image and Compose from [Releases](https://github.com/AllenxuX/luna-ebpf/releases).
+
 [![CI](https://github.com/AllenxuX/luna-ebpf/actions/workflows/test.yaml/badge.svg)](https://github.com/AllenxuX/luna-ebpf/actions/workflows/test.yaml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 

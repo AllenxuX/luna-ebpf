@@ -1,0 +1,43 @@
+name: release
+on:
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install BPF compiler
+        run: sudo apt-get update && sudo apt-get install -y clang llvm libbpf-dev
+      - name: Verify and test release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$RELEASE_TAG" = "v$(sed -n 's/^VERSION ?= //p' Makefile)"
+          test -f "docs/releases/$RELEASE_TAG.md"
+          make generate test race lint
+          python3 scripts/check-integration_test.py
+      - name: Build public release assets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash scripts/package-release.sh "$RELEASE_TAG"
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "luna-ebpf $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
+          gh release upload "$RELEASE_TAG" dist/release/*
+          gh release edit "$RELEASE_TAG" --draft=false --latest
