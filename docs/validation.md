@@ -19,6 +19,10 @@ daemon's real API, with exporter minimum 1.41 and SDK maximum 1.52.
 | Real Docker 23.0.6 / API 1.42, cgroup v2 | TCP/UDP, isolation and lifecycle passed |
 | Real Docker 24.0.9 / API 1.43, cgroup v2 | TCP/UDP, isolation and lifecycle passed |
 | Docker 24.0.9, forced socket-trace on v2 | TCP/UDP, isolation and lifecycle passed |
+| Release-image binary on Docker 20.10.24 and 24.0.9, private netns | TCP/UDP, lifecycle and host bridge preservation passed |
+| Docker 23.0.6, private netns | TCP/UDP, lifecycle and host bridge preservation passed |
+| Final image on Docker 29.5.2 / API 1.54 selected as 1.52 | All-network IPv4/IPv6 regression and map cleanup passed |
+| BPF generation, Go tests, Linux race/vet and amd64/arm64 build | Passed; arm64 runtime not tested |
 | Old 0.1.3 binary against these old daemons | Original API 1.44 rejection reproduced |
 
 Real old-daemon tests use separate static binaries, socket, exec/data roots

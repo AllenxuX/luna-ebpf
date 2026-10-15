@@ -5,7 +5,7 @@ Requires official Docker static binaries, unshare, iproute2 and an iperf
 image archive. Uses a private network namespace as old bridge initialization
 can delete docker0 even with --bridge=none. Never shares host daemon data.
 """
-import argparse,json,os,pathlib,re,socket,subprocess,time,urllib.request
+import argparse,json,os,pathlib,re,shutil,socket,subprocess,time,urllib.request
 
 a=argparse.ArgumentParser()
 a.add_argument('--docker-bin-dir',required=True)
@@ -18,6 +18,7 @@ a.add_argument('--backend',default='auto',choices=['auto','socket-trace'])
 args=a.parse_args()
 root=pathlib.Path(args.workdir).resolve();root.mkdir(parents=True,exist_ok=True)
 assert not any(root.iterdir()),'workdir must be new and empty'
+assert shutil.disk_usage(root).free>=128*1024*1024,'workdir requires at least 128 MiB free space'
 bins=pathlib.Path(args.docker_bin_dir).resolve();sock=root/'docker.sock'
 assert len(str(sock))<100
 env=dict(os.environ,PATH=str(bins)+':'+os.environ['PATH'])
