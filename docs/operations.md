@@ -1,5 +1,11 @@
 # Operations
 
+Docker startup errors mentioning a minimum API of 1.44 in versions up to
+0.1.3 are resolved by upgrading to 0.1.4. The exporter supports API 1.41+
+and logs the selected `docker_api_version`; check the Server section of
+`docker version`. Missing/invalid version headers and API below 1.41 fail
+explicitly. Kernel/BTF failures are separate from Docker API compatibility.
+
 Socket-trace ownership capacity includes all host IPv4/IPv6 sockets, including unmonitored workloads. The default is65,536 entries, derived as min(8 × map_max_entries,1,048,576). Host socket pressure can therefore prevent new container socket tracking. Monitor map_insert_failures_total and size for total host socket concurrency, not only container cgroup count. This pressure case has not been load-tested.
 
 Since 0.1.2, all running Docker containers are discovered regardless of network mode, including the exporter itself. A valid dedicated cgroup is required; mapping failures remain visible via discovery errors. Containers with no IP traffic expose zero counters. No network_mode metric label is added. Plan map capacity by cgroup count including descendants. Existing 0.1.1 dashboards and alerts remain compatible.

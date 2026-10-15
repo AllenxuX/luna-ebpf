@@ -5,7 +5,7 @@ import ctypes, json, os, pathlib, re, subprocess, time, urllib.request
 root = pathlib.Path(os.environ.get('RESULT_DIR', 'test-results/all-networks'))
 root.mkdir(parents=True, exist_ok=True)
 image = os.environ.get('TEST_IMAGE', 'luna-ebpf-iperf-test:alpine3.21.3')
-agent_image = os.environ.get('AGENT_IMAGE', 'luna-ebpf:0.1.3')
+agent_image = os.environ.get('AGENT_IMAGE', 'luna-ebpf:0.1.4')
 collector_backend = os.environ.get('COLLECTOR_BACKEND', 'auto')
 prefix = 'luna-all-' + str(os.getpid())
 names, networks, ids, results = [], [], {}, []

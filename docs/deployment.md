@@ -2,6 +2,8 @@
 
 ## Docker Compose
 
+Docker API 最低版本为 `1.41`（Docker 20.10）。0.1.4 自动选择服务端实际支持的版本，修复 Docker 24 / API 1.43 启动失败；这不放宽 cgroup/BTF/内核要求。启动日志包含 `docker_api_version`，可与 `docker version` 的 Server API 对照。
+
 Linux + Docker Engine + Compose v2 + cgroup v1/v2。既有 cgroup v2 / cgroup-skb 验证环境为 Rocky Linux 9.7 / 内核5.14 / Docker29.5.2。amd64已实测，arm64仅构建验证；v1 socket-trace 已在真实 v1 启动环境验证。
 
 ```bash
@@ -11,7 +13,7 @@ curl -fsS http://127.0.0.1:9808/readyz
 docker compose down
 ```
 
-从源码构建本地 `luna-ebpf:0.1.3`，无预发布镜像依赖。9808须未被占用。Exporter使用host network/PID/cgroup视图，这不限制被监控容器的网络模式。
+从源码构建本地 `luna-ebpf:0.1.4`，无预发布镜像依赖。9808须未被占用。Exporter使用host network/PID/cgroup视图，这不限制被监控容器的网络模式。
 
 默认后端 `auto` 在 v2 使用 cgroup-skb，在 v1 使用 socket-trace。v1 从实际挂载的控制器层级获取内核句柄，优先 memory；须暴露完整宿主机 cgroup 根，不能只挂载容器子树。socket-trace 要求容器内可读宿主机 `/sys/kernel/btf/vmlinux` 及所需 kprobe；按实际宿主机提供 BTF 挂载。没有 BTF 的旧内核不支持该后端，不能靠指定偏移绕过。v2 也可显式使用 socket-trace。部署前以实际权限运行 `--check`。
 

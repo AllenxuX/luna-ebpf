@@ -5,6 +5,37 @@ kernel 5.14, Docker 29.5.2, amd64 and cgroup v2. Results describe one environmen
 not universal kernel/driver compatibility. Private host identities and raw
 environment evidence are not distributed. They do not validate socket-trace.
 
+## 0.1.4 Docker API compatibility
+
+The former SDK negotiation floor rejected old daemons before collection.
+The new constructor probes the unversioned ping endpoint and selects the
+daemon's real API, with exporter minimum 1.41 and SDK maximum 1.52.
+
+| Check | Result |
+|---|---|
+| Strict HTTP API 1.41/1.42/1.43/1.44/1.52/newer | Passed: version/info/list/inspect/events |
+| Invalid/older/missing API, cancellation, ping failure and GET fallback | Passed |
+| Real Docker 20.10.24 / API 1.41, cgroup v2 | TCP/UDP, isolation and lifecycle passed |
+| Real Docker 23.0.6 / API 1.42, cgroup v2 | TCP/UDP, isolation and lifecycle passed |
+| Real Docker 24.0.9 / API 1.43, cgroup v2 | TCP/UDP, isolation and lifecycle passed |
+| Docker 24.0.9, forced socket-trace on v2 | TCP/UDP, isolation and lifecycle passed |
+| Old 0.1.3 binary against these old daemons | Original API 1.44 rejection reproduced |
+
+Real old-daemon tests use separate static binaries, socket, exec/data roots
+and VFS storage. The supplied script also uses a private network namespace:
+old daemon initialization can delete docker0 even with `--bridge=none`.
+Bridge creation and iptables changes are disabled. They
+verify host-network IPv4 TCP and reverse UDP, an unrelated idle container,
+rename events, restart, grace expiry, event reconnect and daemon recovery.
+Example Docker 24 TCP delta: client TX and server RX each 4,069,676 bytes;
+the idle container's four counters remained zero.
+
+These tests do not establish every old Docker/kernel/network-mode combination.
+Forced socket-trace on v2 does not replace genuine v1 runtime validation;
+the genuine v1 results below belong to version 0.1.3. Kernel/BTF requirements
+still apply. API 1.40 and older are explicitly unsupported. Raw host evidence
+remains private; the reproducible script is `scripts/test-docker-api.py`.
+
 ## 0.1.3 actual validation
 
 Tested on Rocky Linux 9.7, kernel 5.14.0-611.55.1.el9_7.x86_64,

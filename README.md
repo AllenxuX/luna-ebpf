@@ -19,6 +19,8 @@
 - 提供 Prometheus 配置、Grafana Dashboard、n9e 告警示例。
 - 支持 Docker Compose 和 systemd 部署；无需 Cilium 集群或 Kubernetes。
 
+Docker API 最低支持 `1.41`（Docker 20.10）；自动选择服务端与客户端共同支持的版本，覆盖 API `1.43` 的 Docker 24。内核/cgroup/BTF 要求仍然适用。
+
 ## 快速开始
 
 需要 Linux、Docker Engine、Docker Compose v2 和 **cgroup v1 或 v2**。v1 使用 socket-trace MVP，要求可读的内核 BTF 和所需 kprobe；缺少 BTF 的旧内核不支持该后端。运行时需要访问宿主机 PID/cgroup 与 Docker Socket，并具备加载和附加 BPF 的权限。
@@ -31,7 +33,7 @@ curl -fsS http://127.0.0.1:9808/readyz
 curl -fsS http://127.0.0.1:9808/metrics
 ```
 
-Compose 从源码构建本地 `luna-ebpf:0.1.3` 镜像，不依赖私有镜像仓库。首次构建需要下载基础镜像、Go 依赖和编译工具。Exporter 自身也会作为容器被发现。
+Compose 从源码构建本地 `luna-ebpf:0.1.4` 镜像，不依赖私有镜像仓库。首次构建需要下载基础镜像、Go 依赖和编译工具。Exporter 自身也会作为容器被发现。
 
 ```bash
 docker compose logs -f

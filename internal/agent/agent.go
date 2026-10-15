@@ -50,12 +50,13 @@ func Run(ctx context.Context, c config.Config) error {
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		return fmt.Errorf("supported architectures: amd64/arm64; got %s", runtime.GOARCH)
 	}
-	cli, err := client.New(client.WithHost("unix://"+strings.TrimPrefix(c.DockerSocket, "unix://")), client.WithAPIVersionNegotiation())
+	callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cli, err := discovery.NewClient(callCtx, "unix://"+strings.TrimPrefix(c.DockerSocket, "unix://"))
 	if err != nil {
 		return fmt.Errorf("Docker client: %w", err)
 	}
 	defer cli.Close()
-	callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	_, err = cli.Ping(callCtx, client.PingOptions{})
 	if err != nil {
 		cancel()
@@ -99,7 +100,7 @@ func Run(ctx context.Context, c config.Config) error {
 	if err = ValidateMountVersion(mountinfo, root, "v"+mode); err != nil {
 		return err
 	}
-	slog.Info("preflight", "go", runtime.Version(), "arch", runtime.GOARCH, "docker_version", version.Version, "cgroup_driver", system.Info.CgroupDriver, "cgroup_version", mode, "collector_backend", backend, "btf_required", backend == "socket-trace", "cgroup_controller", controller)
+	slog.Info("preflight", "go", runtime.Version(), "arch", runtime.GOARCH, "docker_version", version.Version, "docker_api_version", cli.ClientVersion(), "cgroup_driver", system.Info.CgroupDriver, "cgroup_version", mode, "collector_backend", backend, "btf_required", backend == "socket-trace", "cgroup_controller", controller)
 	d := &discovery.Discoverer{API: cli, Resolver: &cgroup.Resolver{Root: root, Proc: c.ProcRoot, MaxNodes: c.MaxNodes, Controller: controller}}
 	callCtx, cancel = context.WithTimeout(ctx, 10*time.Second)
 	containers, skipped, err := d.List(callCtx)

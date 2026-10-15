@@ -18,6 +18,8 @@ Built with Go, cilium/ebpf and bpf2go. Socket cgroup identity attributes traffic
 - Reconcile starts, renames, restarts and exits; clean retired BPF map entries.
 - Docker Compose and systemd deployment, Prometheus config, Grafana dashboard and n9e alert examples.
 
+Minimum Docker API: `1.41` (Docker 20.10). The exporter selects a mutually supported version, including Docker 24 API `1.43`. Kernel/cgroup/BTF requirements still apply.
+
 ## Quick start
 
 Requires Linux, Docker Engine, Docker Compose v2 and cgroup v1 or v2. The v1 socket-trace MVP requires readable kernel BTF and the required kprobes; old kernels without BTF are unsupported by this backend.
@@ -30,7 +32,7 @@ curl -fsS http://127.0.0.1:9808/readyz
 curl -fsS http://127.0.0.1:9808/metrics
 ```
 
-Compose builds `luna-ebpf:0.1.3` locally from source. No published project image is required. The first build downloads base images, dependencies and compiler tools. Stop with `docker compose down`.
+Compose builds `luna-ebpf:0.1.4` locally from source. No published project image is required. The first build downloads base images, dependencies and compiler tools. Stop with `docker compose down`.
 
 The default listener is localhost. Compose uses privileged host PID/cgroup/network access. A read-only Docker socket mount does not restrict Engine API access. HTTP has no built-in authentication or TLS; secure remote scrapes with your network controls.
 

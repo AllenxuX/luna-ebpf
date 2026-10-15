@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — Docker API compatibility fix
+
+- Fix startup on Docker 20.10/23/24 (API 1.41–1.43), previously rejected by the SDK's generic 1.44 negotiation floor.
+- Select the supported API from the real daemon ping response, bounded by the exporter minimum 1.41 and SDK maximum; log the selected API. Reject missing, malformed and older API versions clearly.
+- Add strict HTTP regression coverage for discovery, inspect, system info, version and events across old and current API versions, plus cancellation and ping failures.
+- Add an isolated real-daemon integration script covering actual TCP/UDP counter deltas, idle isolation, rename events, restart, retirement and daemon recovery.
+- Preserve metric names, labels, cgroup backends and deployment permissions.
+
 ## 0.1.3 — cgroup v1 socket-trace MVP
 
 - Add `--collector-backend auto|cgroup-skb|socket-trace`: auto keeps cgroup-skb on v2 and selects socket-trace on v1; socket-trace can be forced on v2.
