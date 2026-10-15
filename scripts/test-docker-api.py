@@ -28,6 +28,12 @@ daemon=None;agent=None;names=[];logs=[]
 host_netns=os.readlink('/proc/self/ns/net')
 bridge_index=pathlib.Path('/sys/class/net/docker0/ifindex')
 host_bridge=bridge_index.read_text() if bridge_index.exists() else None
+def cleanup_namespace_mounts(workdir):
+ # Old dockerd may leave its default namespace bind-mounted after shutdown.
+ directory=workdir/'exec/netns'
+ if directory.is_dir():
+  for entry in directory.iterdir():
+   if os.path.ismount(entry):subprocess.run(['umount','--',str(entry)],check=True)
 def run(*argv):return subprocess.check_output(argv,text=True,env=env).strip()
 def start_daemon():
  global daemon
@@ -119,6 +125,7 @@ try:
 finally:
  for name in names:subprocess.run([*docker,'rm','-f',name],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  stop(agent);stop(daemon)
+ cleanup_namespace_mounts(root)
  for log in logs:log.close()
  current_bridge=bridge_index.read_text() if bridge_index.exists() else None
  assert current_bridge==host_bridge,'host docker0 changed during isolated validation'
